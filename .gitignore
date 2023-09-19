@@ -50,3 +50,4 @@ rsconnect/
 
 renv/
 *renv*
+*.csv
