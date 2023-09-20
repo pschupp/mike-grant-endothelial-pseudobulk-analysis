@@ -17,8 +17,8 @@ Overall goal of this analysis is to generate the following series of plots for e
 3. Plot of single cell DE v pseudobulk endothelial module ME
 
 Therefore we need to perform the following analyses:
-[ ] Perform pseudobulk
-[ ] Do FM of pseudobulk
+[x] Perform pseudobulk
+[x] Do FM of pseudobulk
 [ ] Perform enrichments of networks
 [ ] Perform DE in snRNA-seq
 
@@ -57,4 +57,111 @@ makeSyntheticDatasets(
 )
 ```
 
+Two files generated:
+- `SyntheticDataset1_25pcntCells_50pcntVar_100samples_08-25-51.csv` - gene x sample matrix
+- `SyntheticDataset1_25pcntCells_50pcntVar_100samples_legend_08-25-51.csv` - cell/nucleus x sample binary matrix
+
 ## FindModules
+
+```{.r}
+renv::install('bioc::WGCNA')
+renv::install('bioc::Clust')
+renv::install('bioc::svMisc')
+renv::install('bioc::qvalue')
+renv::install('bioc::purrr')
+renv::install('bioc::HiClimR')
+renv::install('bioc::future')
+rnaDataframe = data.frame(fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/SyntheticDatasets/SyntheticDataset1_25pcntCells_50pcntVar_100samples_08-25-51.csv'))
+rnaDataframe$x = make.unique(rnaDataframe$x)
+source('~/code/oldham-lab/FindModules/FindModules.lint.par.R')
+setwd('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/')
+FindModules(
+    projectname = 'pseudobulk_snrna-seq',
+    expr = rnaDataframe,
+    geneinfo = c(1),
+    sampleindex = seq(2,ncol(rnaDataframe)),
+    samplegroups = as.factor(colnames(rnaDataframe)[-1]),
+    subset = NULL,
+    simMat = NULL,
+    saveSimMat = FALSE,
+    simType = 'Bicor',
+    overlapType = 'None',
+    TOtype = 'signed',
+    TOdenom= 'min', 
+    beta = 1,
+    MIestimator = 'mi.mm',
+    MIdisc = 'equalfreq',
+    signumType = 'rel',
+    iterate = TRUE,
+    signumvec = c(.999,.99,.98, 0.95, 0.90, 0.80),
+    minsizevec = c(3, 5, 8, 10, 12, 15, 20),
+    signum = NULL,
+    minSize = NULL ,
+    merge.by = 'ME',
+    merge.param = 0.8,
+    export.merge.comp = T,
+    ZNCcut = 2,
+    calcSW = FALSE,
+    loadTree = FALSE,
+    writeKME = TRUE,
+    calcBigModStat = FALSE,
+    writeModSnap = TRUE
+)
+```
+
+Network is generated under `~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/pseudobulk_snrna-seq_Modules`.
+
+## Enrichment analysis
+
+```{.r}
+## Enrichment analysis runcode.
+## Read in GSEA functions, e.g.:
+renv::install('bioc::GSEABase')
+renv::install('bioc::limma')
+renv::install('bioc::future.apply')
+library('flashClust')
+library('parallel')
+source("/home/patrick/code/oldham-lab/GSEA/GSEAfxsV3.lint.R")
+source("/home/patrick/code/oldham-lab/GSEA/GSEAfxsV3.R")
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/pseudobulk_snrna-seq_Modules'
+setwd(WD)
+print("Set working directory")
+## To run enrichment analysis for our gene sets in all networks:
+MyGSHGloop(kmecut1="topmodposbc",exclude="none",pvalcut1=NULL)
+setwd(WD)
+MyGSHGloop(kmecut1="topmodposfdr",exclude="none",pvalcut1=NULL)
+setwd(WD)
+
+## Read in Broad gene sets (MolSigDBv3): 
+print("Reading in 'broadSets'")
+broadSets=getBroadSets("/home/shared/genesets/Broad_GSEA/v7/msigdb_v7.4.xml")
+print("Success reading in 'broadSets'")
+## To run enrichment analysis for broad gene sets in all networks:
+### Note that kmecut1 can equal "seed", "topmodposbc" (recommended), or "topmodposfdr".
+print("Beginning loop BC")
+setwd(WD)
+BroadGSHGloop(kmecut1="topmodposbc",pvalcut1=NULL)
+setwd(WD)
+print("Beginning loop FD")
+BroadGSHGloop(kmecut1="topmodposfdr",pvalcut1=NULL)
+setwd(WD)
+```
+
+## DE in snRNA-seq data
+
+```{.r}
+# read in expression data
+library('data.table')
+expr = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-expr.csv')
+genes = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-gene.csv', header = T)
+clusters = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-cluster.csv', header = T)
+colnames(clusters) = c('name', 'cluster')
+clustConv = c(2, 10, 9, 7, 1, 5, 6, 3, 11, 8, 4, 12)
+names(clustConv) = c('Clone 1', 'Clone 5', 'Astrocytes', 'Clone 3', 'Clone 2', 'Clone 4:2', 'Endothelial cells', 'Clone 4:1', 'Oligodendrocytes:1', 'Oligodendrocytes:2', 'Microglia', 'Neurons')
+clusters$clust = names(clustConv)[match(clusters$clust, clustConv)]
+dat = data.frame(Genes = genes[,-1],expr)
+clusters = data.frame(clusters)
+wilcox.test(dat[,which(clusters$clust == 'Endothelial cells')+1], dat[,-(which(clusters$clust == 'Endothelial cells')+1)])
+wilcox.test(dat[ind], x[!ind], alternative='greater')$p.value
+
+```
