@@ -51,3 +51,4 @@ rsconnect/
 renv/
 *renv*
 *.csv
+SyntheticDatasets/
