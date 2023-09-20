@@ -19,10 +19,10 @@ Overall goal of this analysis is to generate the following series of plots for e
 Therefore we need to perform the following analyses:
 [x] Perform pseudobulk
 [x] Do FM of pseudobulk
-[ ] Perform enrichments of networks
-[ ] Perform DE in snRNA-seq
+[x] Perform enrichments of networks
+[x] Perform DE in snRNA-seq
 
-## Log
+# Log : data generation
 
 Begin documenting work.
 
@@ -151,6 +151,7 @@ setwd(WD)
 
 ```{.r}
 # read in expression data
+library('future.apply')
 library('data.table')
 expr = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-expr.csv')
 genes = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-gene.csv', header = T)
@@ -161,7 +162,30 @@ names(clustConv) = c('Clone 1', 'Clone 5', 'Astrocytes', 'Clone 3', 'Clone 2', '
 clusters$clust = names(clustConv)[match(clusters$clust, clustConv)]
 dat = data.frame(Genes = genes[,-1],expr)
 clusters = data.frame(clusters)
-wilcox.test(dat[,which(clusters$clust == 'Endothelial cells')+1], dat[,-(which(clusters$clust == 'Endothelial cells')+1)])
+testOut = future_apply(dat, 1, function(datX) wilcox.test(as.numeric(datX[which(clusters$clust == 'Endothelial cells')+1]), as.numeric(datX[-c(1,(which(clusters$clust == 'Endothelial cells')+1))])))
+TtestOut = future_apply(dat, 1, function(datX) t.test(as.numeric(datX[which(clusters$clust == 'Endothelial cells')+1]), as.numeric(datX[-c(1,(which(clusters$clust == 'Endothelial cells')+1))])))
+tvalOut = lapply(TtestOut, function(x) x$p.value)
 wilcox.test(dat[ind], x[!ind], alternative='greater')$p.value
-
+# summary(unlist(tvalOut))
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 0.00000 0.01357 0.15771 0.27415 0.47228 0.99998
+out = data.frame(genes = genes$x, tvalue = unlist(tvalOut))
+write.csv(out, row.names = FALSE, file = 'snrnaseq-endothelial-tvalues.csv')
 ```
+
+# Log: making figure
+
+steps:
+
+[ ] identify module with highest enrichment
+[ ] read in kme and ME
+[ ] get color scheme
+[ ] create correlation plot and ME plot, over each other
+[ ] create ME va actual abundance plot
+[ ] create t-value v kME plot
+[ ] align all plots into single figure
+
+## identify module with highest enrichment
+
+```{.r}
+
