@@ -177,9 +177,9 @@ write.csv(out, row.names = FALSE, file = 'snrnaseq-endothelial-tvalues.csv')
 
 steps:
 
-[ ] identify module with highest enrichment
-[ ] read in kme and ME
-[ ] get color scheme
+[x] identify module with highest enrichment
+[x] read in kme and ME
+[x] get color scheme
 [ ] create correlation plot and ME plot, over each other
 [ ] create ME va actual abundance plot
 [ ] create t-value v kME plot
@@ -188,4 +188,24 @@ steps:
 ## identify module with highest enrichment
 
 ```{.r}
-
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/pseudobulk_snrna-seq_Modules/'
+library('data.table')
+rnaDataframe = data.frame(fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/SyntheticDatasets/SyntheticDataset1_25pcntCells_50pcntVar_100samples_08-25-51.csv'))
+enrich = lapply(list.files(path = WD, pattern = 'MY_SETS.*FDR.*csv', recursive = TRUE, full.names = TRUE), fread)
+# MOSET7058 is top 150 genes from kelley endothelial
+maxEnrich = lapply(enrich, function(x) min(x[which(x$setid == 'moset7058'), seq(8, ncol(x)), with = false]))
+netSelec = which.min(unlist(maxEnrich))
+enrichPath = list.files(path = WD, pattern = 'Bicor-None')
+netSelec = which.min(unlist(maxEnrich))
+setwd(paste0(WD, enrichPath[netSelec]))
+enrich = fread(list.files(path = '.', pattern = 'MY_SETS.*FDR.*csv', recursive = TRUE, full.names = TRUE))
+modSelec = colnames(enrich)[which.min(enrich[which(enrich$SetID== 'MOSET7058'), seq(8, ncol(enrich)), with = FALSE])]
+kmeTab = fread(list.files(path = '.', pattern = 'kME_table.*csv', recursive = TRUE, full.names = TRUE))
+meTab = fread(list.files(path = '.', pattern = 'Module_eigengenes.*csv', recursive = TRUE, full.names = TRUE))
+# colorscheme
+# main pink color is e465a1
+# use set1 from colorbrewer
+corRankGenes = kmeTab$x[order(kmeTab[,which(colnames(kmeTab) == paste0('kME', modSelec)), with = F])]
+corRankGenes = corRankGenes[-grep('^ENSG|^LINC|^ERCC', corRankGenes)]
+corExpr = rnaDataframe[match(corRankGenes, rnaDataframe$x),]
+```
