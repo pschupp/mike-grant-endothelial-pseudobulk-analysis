@@ -30,9 +30,9 @@ Begin documenting work.
 
 ```{.r}
 renv::init()
+renv::install('data.table')
 # restart r
 source('~/code/oldham-lab/Pseudobulk-from-SC-SN-data/makeSyntheticDatasets_0.51.r')
-renv::install('data.table')
 library('data.table')
 expr = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-expr.csv')
 genes = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-gene.csv', header = T)
@@ -40,21 +40,32 @@ clusters = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endot
 colnames(clusters) = c('name', 'cluster')
 clustConv = c(2, 10, 9, 7, 1, 5, 6, 3, 11, 8, 4, 12)
 names(clustConv) = c('Clone 1', 'Clone 5', 'Astrocytes', 'Clone 3', 'Clone 2', 'Clone 4:2', 'Endothelial cells', 'Clone 4:1', 'Oligodendrocytes:1', 'Oligodendrocytes:2', 'Microglia', 'Neurons')
+clusters$clust = gsub('Clone 4:1', 'Clone 4', clusters$clust)
+clusters$clust = gsub('Clone 4:2', 'Clone 4', clusters$clust)
+clusters$clust = gsub('Oligodendrocytes:1', 'Oligodendrocytes', clusters$clust)
+clusters$clust = gsub('Oligodendrocytes:2', 'Oligodendrocytes', clusters$clust)
 clusters$clust = names(clustConv)[match(clusters$clust, clustConv)]
-dat = data.frame(Genes = genes[,-1],expr)
+dat = data.frame(Genes = genes[,-1], expr)
+colnames(dat)[1] = 'Genes'
 clusters = data.frame(clusters)
 makeSyntheticDatasets(
     expr = dat,
     sampleindex = c(2:ncol(dat)),
     cell.info = clusters,
     cell.name = 1,
-    cell.type = 2,
+    cell.type = 3,
     cell.frac = NULL,
-    pcnt.cells = 25,
+    pcnt.cells = 50,
     pcnt.var = 50,
     no.samples = 100,
     no.datasets = 1
 )
+
+# quick analysis
+x = read.csv(list.files(path = 'SyntheticDatasets', pattern = 'legend', full.names = TRUE))
+y = aggregate(x[,-c(1,2)], by = list(x$Cell.type), sum)
+y=data.frame(y[,1], apply(y[,-1], 2, function(x) 100*x/sum(x)))
+y
 ```
 
 Two files generated:
@@ -71,9 +82,12 @@ renv::install('bioc::qvalue')
 renv::install('bioc::purrr')
 renv::install('bioc::HiClimR')
 renv::install('bioc::future')
-rnaDataframe = data.frame(fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/SyntheticDatasets/SyntheticDataset1_25pcntCells_50pcntVar_100samples_08-25-51.csv'))
-rnaDataframe$x = make.unique(rnaDataframe$x)
+library('data.table')
+rnaDataframe = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'samples_[0-9]', full.names = TRUE)))
+colnames(rnaDataframe)[1] = 'Gene'
+rnaDataframe$Gene = make.unique(rnaDataframe$Gene)
 source('~/code/oldham-lab/FindModules/FindModules.lint.par.R')
+plan(multisession, workers = 20)
 setwd('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/')
 FindModules(
     projectname = 'pseudobulk_snrna-seq',
@@ -191,6 +205,7 @@ steps:
 WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/pseudobulk_snrna-seq_Modules/'
 library('data.table')
 rnaDataframe = data.frame(fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/SyntheticDatasets/SyntheticDataset1_25pcntCells_50pcntVar_100samples_08-25-51.csv'))
+rnaDataframe$x = make.unique(rnaDataframe$x)
 enrich = lapply(list.files(path = WD, pattern = 'MY_SETS.*FDR.*csv', recursive = TRUE, full.names = TRUE), fread)
 # MOSET7058 is top 150 genes from kelley endothelial
 maxEnrich = lapply(enrich, function(x) min(x[which(x$setid == 'moset7058'), seq(8, ncol(x)), with = false]))
@@ -205,7 +220,42 @@ meTab = fread(list.files(path = '.', pattern = 'Module_eigengenes.*csv', recursi
 # colorscheme
 # main pink color is e465a1
 # use set1 from colorbrewer
-corRankGenes = kmeTab$x[order(kmeTab[,which(colnames(kmeTab) == paste0('kME', modSelec)), with = F])]
+corRankGenes = kmeTab$x[order(kmeTab[,which(colnames(kmeTab) == paste0('kME', modSelec)), with = FALSE], decreasing = TRUE)]
 corRankGenes = corRankGenes[-grep('^ENSG|^LINC|^ERCC', corRankGenes)]
 corExpr = rnaDataframe[match(corRankGenes, rnaDataframe$x),]
+corSelec = corExpr[seq(1,5),]
+cor(t(corSelec[,-1]))
+corSelec = data.frame( Gene = corSelec[,1], log2(corSelec[,-1]))
+cor(t(corSelec[,-1]))
+meSelec = meTab[, which(colnames(meTab) == modSelec), with = F]
+library('ggplot2')
+setwd('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis')
+# correlation plot
+corPlot = reshape2::melt(corSelec, id.var = 'Gene')
+colnames(corPlot) = c('Gene', 'Sample', 'Expr')
+corPlot$Sample = factor(corPlot$Sample, levels = unique(corPlot$Sample))
+pdf('correlation_genes_plot.pdf')
+ggplot(corPlot, aes(x = Sample, y = Expr, group = Gene)) +
+    geom_line(aes(color = Gene))
+dev.off()
+
+
+# ME plot
+pdf('ME_plot.pdf')
+
+
+# cor between ME and actual abundance
+abund = read.csv("/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/SyntheticDatasets/SyntheticDataset1_25pcntCells_50pcntVar_100samples_legend_08-25-51.csv")
+
+clusters = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-cluster.csv', header = T)
+colnames(clusters) = c('name', 'cluster')
+clustConv = c(2, 10, 9, 7, 1, 5, 6, 3, 11, 8, 4, 12)
+names(clustConv) = c('Clone 1', 'Clone 5', 'Astrocytes', 'Clone 3', 'Clone 2', 'Clone 4:2', 'Endothelial cells', 'Clone 4:1', 'Oligodendrocytes:1', 'Oligodendrocytes:2', 'Microglia', 'Neurons')
+clusters$clust = names(clustConv)[match(clusters$clust, clustConv)]
+abund$Cell.name = clusters$clust[match(clusters$name, abund$Cell.name)]
+
+abundAgg = aggregate(abund[,-c(1,2)], by = list(abund$Cell.name), sum)
+tName = abundAgg[,1]
+abundAgg = t(data.frame(abundAgg[,1], apply(abundAgg[,-1], 2, function(x) 100*x/sum(x)))[,-1])
+colnames(abundAgg) = tName
 ```
