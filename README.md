@@ -17,10 +17,10 @@ Overall goal of this analysis is to generate the following series of plots for e
 3. Plot of single cell DE v pseudobulk endothelial module ME
 
 Therefore we need to perform the following analyses:
-[x] Perform pseudobulk
-[x] Do FM of pseudobulk
-[x] Perform enrichments of networks
-[x] Perform DE in snRNA-seq
+- [x] Perform pseudobulk
+- [x] Do FM of pseudobulk
+- [x] Perform enrichments of networks
+- [x] Perform DE in snRNA-seq
 
 # Log : data generation
 
@@ -189,13 +189,13 @@ write.csv(out, row.names = FALSE, file = 'snrnaseq-endothelial-tvalues.csv')
 
 steps:
 
-[x] identify module with highest enrichment
-[x] read in kme and ME
-[x] get color scheme
-[x] create correlation plot and ME plot, over each other
-[x] create ME va actual abundance plot
-[ ] create t-value v kME plot
-[ ] align all plots into single figure
+- [x] identify module with highest enrichment
+- [x] read in kme and ME
+- [x] get color scheme
+- [x] create correlation plot and ME plot, over each other
+- [x] create ME va actual abundance plot
+- [x] create t-value v kME plot
+- [ ] align all plots into single figure
 
 ## identify module with highest enrichment
 ```{.r}
