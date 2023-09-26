@@ -211,12 +211,19 @@ enrichPath = list.files(path = WD, pattern = 'Bicor-None')
 netSelec = which.min(unlist(maxEnrich))
 ```
 
+## Creating all plots
 moving forward with whitesmoke module from "Bicor-None_signum0.147_minSize8_merge_ME_0.8_14761"
 
 ```{.r}
+# colorscheme
+# main pink color is e465a1
+# use set1 from colorbrewer
 WD = "~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/"
 network = "pseudobulk_snrna-seq_Modules/Bicor-None_signum0.147_minSize8_merge_ME_0.8_14761"
 library('data.table')
+library('ggplot2')
+library('RColorBrewer')
+# load pseudobulk expression matrix
 setwd(WD)
 rnaDataframe = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'samples_[0-9]', full.names = TRUE)))
 colnames(rnaDataframe)[1] = 'Gene'
@@ -226,59 +233,102 @@ setwd(paste0(WD, network))
 modSelec = 'whitesmoke'
 kmeTab = fread(list.files(path = '.', pattern = 'kME_table.*csv', recursive = TRUE, full.names = TRUE))
 meTab = fread(list.files(path = '.', pattern = 'Module_eigengenes.*csv', recursive = TRUE, full.names = TRUE))
-# colorscheme
-# main pink color is e465a1
-# use set1 from colorbrewer
 corRankGenes = kmeTab$Gene[order(kmeTab[,which(colnames(kmeTab) == paste0('kME', modSelec)), with = FALSE], decreasing = TRUE)]
 corRankGenes = corRankGenes[-grep('^ENSG|^LINC|^ERCC|-AS1|-AS2', corRankGenes)]
 corExpr = rnaDataframe[match(corRankGenes, rnaDataframe$Gene),]
-corSelec = corExpr[seq(1,15),]
+corSelec = corExpr[c(seq(1,3), seq(5,16)),]
 corSelec = data.frame( Gene = corSelec[,1], log2(corSelec[,-1]))
 meSelec = data.frame(Sample = meTab$Sample, meTab[, which(colnames(meTab) == modSelec), with = F])
-library('ggplot2')
-setwd(WD)
-# correlation plot
 corPlot = reshape2::melt(corSelec, id.var = 'Gene')
 colnames(corPlot) = c('Gene', 'Sample', 'Expr')
+meanExpr = aggregate(corPlot$Expr, by = list(corPlot$Gene), mean)
+meanExpr = meanExpr[order(meanExpr$x, decreasing = TRUE),]
+corPlot$Gene = factor(corPlot$Gene, levels = meanExpr$Group.1)
 corPlot$Sample = factor(corPlot$Sample, levels = unique(corPlot$Sample))
-pdf('correlation_genes_plot.pdf')
-ggplot(corPlot, aes(x = Sample, y = Expr, group = Gene)) +
-    geom_line(aes(color = Gene))
-dev.off()
-
-# ME plot
-pdf('ME_plot.pdf')
-ggplot(meSelec, aes(x = Sample , y = whitesmoke)) +
-    geom_bar(stat = 'identity')
-dev.off()
-
 # cor between ME and actual abundance
+setwd(WD)
 abund = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'legend', full.names = TRUE)))
 clusters = data.frame(fread(list.files(path = '.', pattern = 'cluster', full.names = TRUE)))
-
 colnames(clusters) = c('name', 'cluster')
 clustConv = c(2, 10, 9, 7, 1, 5, 6, 3, 11, 8, 4, 12)
 names(clustConv) = c('Clone 1', 'Clone 5', 'Astrocytes', 'Clone 3', 'Clone 2', 'Clone 4', 'Endothelial cells', 'Clone 4', 'Oligodendrocytes', 'Oligodendrocytes', 'Microglia', 'Neurons')
 clusters$clust = names(clustConv)[match(clusters$clust, clustConv)]
 abund$Cell.name = clusters$clust[match(clusters$name, abund$Cell.name)]
-
 abundAgg = aggregate(abund[,-c(1,2)], by = list(abund$Cell.name), sum)
 tName = abundAgg[,1]
 abundAgg = t(data.frame(abundAgg[,1], apply(abundAgg[,-1], 2, function(x) 100*x/sum(x)))[,-1])
 colnames(abundAgg) = tName
-abundPlot = data.frame(section = meSelec[,1], abundance = scale(abundAgg[,7]), me = scale(meSelec[,2]))
-abundPlot = reshape2::melt(abundPlot[order(apply(abundPlot[-1], 1, sum), decreasing = FALSE), ])
-abundPlot$section = factor(abundPlot$section, levels = unique(abundPlot$section))
-pdf('abundance_correlation.pdf')
-ggplot(abundPlot, aes(x = section, y = value, color = variable)) +
-    geom_point()
-dev.off()
-
-# correlation between t-value and kME
+abundPlot = data.frame(section = meSelec[,1], abundance = abundAgg[,7], me = meSelec[,2])
+# abundPlot = reshape2::melt(abundPlot[order(apply(abundPlot[-1], 1, sum), decreasing = FALSE), ])
+# abundPlot$section = factor(abundPlot$section, levels = unique(abundPlot$section))
+# load differential expression values
 deTval = read.csv('snrnaseq-endothelial-tvalues.csv')
 difExplot = data.frame(gene = kmeTab$Gene, kme = (kmeTab$kMEwhitesmoke), tval = (deTval$tvalue[match(kmeTab$Gene, deTval$genes)]))
+# all plots made below
+setwd(WD)
+# create theme
+fig1Theme = function(){
+    theme_bw() +
+    theme(
+#       axis.line = element_line(colour = "black"),
+# 		legend.title = element_text(size=30, family='NimbusSan'),
+ 		axis.text.x = element_text(size=15, color='black',  family='NimbusSan'), # , margin=margin(t=10)),
+ 		axis.text.y = element_text(size=15, color='black', family='NimbusSan'), # , margin=margin(r=10)),
+        axis.title.y = element_text(size=20, face='bold', family='NimbusSan'), #, margin=margin(t=0, r=10, b=0, l=0)),
+        axis.title.x = element_text(size=20, face='bold', family='NimbusSan'), #, margin=margin(t=0, r=0, b=0, l=0)),
+        plot.title = element_text(size=30,face="bold", hjust=.5, family='NimbusSan'), # margin=margin(t=-20, b=10)),
+# 		plot.subtitle = element_text(size=40,face="bold", hjust=.5 , family='NimbusSan', margin=margin(t=10, b=10)),
+# 		axis.line.x = element_line(size=3),
+# 		axis.line.y = element_line(size=3),
+# 		plot.margin = unit(c(4, 2, 1, 2), "lines"),
+# 		legend.key.size=unit(1.3, 'cm'),
+# 		legend.text=element_text(size=30, family='NimbusSan')
+        panel.border = element_rect(fill = NA, colour = "black", linewidth = 2),
+        plot.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = 'bottom')
+}
+# correlation plot
+pdf('correlation_genes_plot.pdf')
+ggplot(corPlot, aes(x = Sample, y = Expr, group = Gene)) +
+    geom_line(aes(color = Gene)) +
+    scale_color_discrete(colorRampPalette( brewer.pal(9,"Set1") )(15)) + # revisit TODO
+    scale_x_discrete(breaks = c()) +
+    scale_y_continuous(breaks = c()) +
+    labs(x = '', y = 'Expression level', title = 'Pseudobulk gene\ncoexpression module') +
+    guides(color=guide_legend(title="", nrow = 3, byrow = TRUE)) +
+    fig1Theme()
+dev.off()
+# ME plot
+pdf('ME_plot.pdf', height=2)
+ggplot(meSelec, aes(x = Sample , y = whitesmoke)) +
+    geom_bar(stat = 'identity',fill ='#e465a1', color = 'black') +
+    labs(x = 'Pseudobulk samples', y = 'AU', title = 'Module eigengene (PC1)') +
+    scale_y_continuous(breaks = c(-.2, 0,.2)) +
+    scale_x_discrete(breaks = c()) +
+    fig1Theme()
+dev.off()
+# correlation of abundance v ME plot
+pdf('abundance_correlation.pdf')
+ggplot(abundPlot, aes(x = me, y = abundance)) +
+    geom_point(color = 'black', fill = '#e465a1', size = 3, shape = 21) +
+    labs(x = 'Predicted abundance in pseudobulk samples\n(module eigengene)', 
+        y = 'Actual abundance in pseudobulk samples (%)', 
+        title = 'Malignant cell abundance') +
+    scale_y_continuous(breaks = c(0, 4,8), limits = c(0, 8)) +
+    scale_x_continuous(breaks = c(-.3, 0,.3), limits = c(-.3, .3)) +
+    fig1Theme()
+dev.off()
+# correlation between t-value and kME
 pdf('difex_correlation.pdf')
-ggplot(difExplot, aes(x = kme , y = tval)) +
-    geom_point()
+ggplot(difExplot, aes(x = tval, y = kme)) +
+    geom_point(color = 'black', fill= '#e465a1', size = 3, shape = 21) +
+    labs(x = 'Single-nucleus DE (t-values)',
+        y = 'Pseudobulk kME',
+        title = 'Malignant cell expression') +
+    scale_x_continuous(breaks = c(-20, 0, 20), limits = c(-20, 20)) +
+    scale_y_continuous(breaks = c(-.5, 0, 0.5, 1), limits = c(-.5, 1)) +
+    fig1Theme()
 dev.off()
 ```
