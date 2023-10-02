@@ -214,15 +214,20 @@ netSelec = which.min(unlist(maxEnrich))
 ## Creating all plots
 moving forward with whitesmoke module from "Bicor-None_signum0.147_minSize8_merge_ME_0.8_14761"
 
+# Bicor-None_signum0.278_minSize8_merge_ME_0.8_10000,navajowhite3
 ```{.r}
 # colorscheme
 # main pink color is e465a1
 # use set1 from colorbrewer
+WD = "~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/10k_genes/"
+network = "pseudobulk_snrna-seq_Modules/Bicor-None_signum0.278_minSize8_merge_ME_0.8_10000"
 WD = "~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/"
 network = "pseudobulk_snrna-seq_Modules/Bicor-None_signum0.147_minSize8_merge_ME_0.8_14761"
 library('data.table')
 library('ggplot2')
 library('RColorBrewer')
+library('future')
+library('future.apply')
 # load pseudobulk expression matrix
 setwd(WD)
 rnaDataframe = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'samples_[0-9]', full.names = TRUE)))
@@ -236,8 +241,8 @@ meTab = fread(list.files(path = '.', pattern = 'Module_eigengenes.*csv', recursi
 corRankGenes = kmeTab$Gene[order(kmeTab[,which(colnames(kmeTab) == paste0('kME', modSelec)), with = FALSE], decreasing = TRUE)]
 corRankGenes = corRankGenes[-grep('^ENSG|^LINC|^ERCC|-AS1|-AS2', corRankGenes)]
 corExpr = rnaDataframe[match(corRankGenes, rnaDataframe$Gene),]
-corSelec = corExpr[c(seq(1,3), seq(5,16)),]
-corSelec = data.frame( Gene = corSelec[,1], log2(corSelec[,-1]))
+corSelec = corExpr[seq(1,15),]
+corSelec = data.frame(Gene = corSelec[,1], t(apply(log2(corSelec[,-1]), 1, scale)))
 meSelec = data.frame(Sample = meTab$Sample, meTab[, which(colnames(meTab) == modSelec), with = F])
 corPlot = reshape2::melt(corSelec, id.var = 'Gene')
 colnames(corPlot) = c('Gene', 'Sample', 'Expr')
@@ -248,7 +253,7 @@ corPlot$Sample = factor(corPlot$Sample, levels = unique(corPlot$Sample))
 # cor between ME and actual abundance
 setwd(WD)
 abund = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'legend', full.names = TRUE)))
-clusters = data.frame(fread(list.files(path = '.', pattern = 'cluster', full.names = TRUE)))
+clusters = data.frame(fread(list.files(path = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/', pattern = 'cluster', full.names = TRUE)))
 colnames(clusters) = c('name', 'cluster')
 clustConv = c(2, 10, 9, 7, 1, 5, 6, 3, 11, 8, 4, 12)
 names(clustConv) = c('Clone 1', 'Clone 5', 'Astrocytes', 'Clone 3', 'Clone 2', 'Clone 4', 'Endothelial cells', 'Clone 4', 'Oligodendrocytes', 'Oligodendrocytes', 'Microglia', 'Neurons')
@@ -262,15 +267,39 @@ abundPlot = data.frame(section = meSelec[,1], abundance = abundAgg[,7], me = meS
 # abundPlot = reshape2::melt(abundPlot[order(apply(abundPlot[-1], 1, sum), decreasing = FALSE), ])
 # abundPlot$section = factor(abundPlot$section, levels = unique(abundPlot$section))
 # load differential expression values
-TtestOut = future_apply(expr[,-1] , 1, function(exprX) 
-    t.test(as.numeric(exprX[which(clusters$Selection == 'Endothelial(BSC)')+1]), 
-    as.numeric(exprX[-c(1,(which(clusters$Selection == 'Endothelial(BSC)')+1))])))
-tvalOut = lapply(TtestOut, function(x) x$statistic)
-# summary(unlist(tvalOut))
-#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 0.00000 0.01357 0.15771 0.27415 0.47228 0.99998
-deTval = data.frame(genes = expr$Gene, tvalue = unlist(tvalOut))
+library('data.table')
+expr = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-expr.csv')
+genes = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-gene.csv', header = T)
+clusters = fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrna-seq-cluster.csv', header = T)
+colnames(clusters) = c('name', 'cluster')
+clustConv = c(2, 10, 9, 7, 1, 5, 6, 3, 11, 8, 4, 12)
+names(clustConv) = c('Clone 1', 'Clone 5', 'Astrocytes', 'Clone 3', 'Clone 2', 'Clone 4:2', 'Endothelial cells', 'Clone 4:1', 'Oligodendrocytes:1', 'Oligodendrocytes:2', 'Microglia', 'Neurons')
+dat = data.frame(Genes = genes[,-1], expr)
+colnames(dat)[1] = 'Gene'
+clusters = data.frame(clusters)
+clusters$clust = names(clustConv)[match(clusters$clust, clustConv)]
+clusters$clust = gsub('Clone 4:1', 'Clone 4', clusters$clust)
+clusters$clust = gsub('Clone 4:2', 'Clone 4', clusters$clust)
+clusters$clust = gsub('Oligodendrocytes:1', 'Oligodendrocytes', clusters$clust)
+clusters$clust = gsub('Oligodendrocytes:2', 'Oligodendrocytes', clusters$clust)
+dat = dat[-grep('^ENSG|^ERCC|^LINC', dat$Gene),]
+gSum = apply(dat[,-1], 1, median)
+dat = dat[order(gSum, decreasing = TRUE),]
+dat = data.frame(dat[1:10000,])
+TtestOut = future_apply(dat[,-1] , 1, function(exprX)                                                               
+    t.test(as.numeric(exprX[which(clusters$clust == 'Endothelial cells')+1]),                                     
+    as.numeric(exprX[-c(1,(which(clusters$clust == 'Endothelial cells')+1))])))
+tvalOut = lapply(TtestOut, function(x) x$statistic)  
+deTval = data.frame(genes = dat$Gene, tvalue = unlist(tvalOut))
+deTval =read.csv('~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/snrnaseq-endothelial-tvalues.csv')
 difExplot = data.frame(gene = kmeTab$Gene, kme = (kmeTab$kMEwhitesmoke), tval = (deTval$tvalue[match(kmeTab$Gene, deTval$genes)]))
+# enrich = fread(list.files(path = '.', pattern = 'MY_SETS.*FDR.*csv', recursive = TRUE, full.names = TRUE))
+setwd(WD)
+WD = "/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/pseudobulk_snrna-seq_Modules"
+modSelec = 'navajowhite3'
+kmeTabbig = lapply(list.files(path = '.', pattern = 'kME_table.*csv', recursive = TRUE, full.names = TRUE),fread)
+out=lapply(kmeTabbig, function(kmeTab) apply(kmeTab[,seq(9,ncol(kmeTab),2), with=F], 2, function(x) cor(x, deTval$tvalue[match(kmeTab$Gene, deTval$genes)], use='pairwise.complete.obs')))
+lapply(out,max)
 # all plots made below
 setwd(WD)
 # create theme
@@ -308,37 +337,60 @@ ggplot(corPlot, aes(x = Sample, y = Expr, group = Gene)) +
     fig1Theme()
 dev.off()
 # ME plot
+meSelec$Sample = factor(meSelec$Sample, levels = meSelec$Sample)
 pdf('ME_plot.pdf', height=2)
-ggplot(meSelec, aes(x = Sample , y = whitesmoke)) +
+ggplot(meSelec, aes(x = Sample , y = lightcyan)) +
     geom_bar(stat = 'identity',fill ='#e465a1', color = 'black') +
     labs(x = 'Pseudobulk samples', y = 'AU', title = 'Module eigengene (PC1)') +
-    scale_y_continuous(breaks = c(-.2, 0,.2)) +
+    scale_y_continuous(breaks = c(-.2, 0,.2), limits=c(-0.2,0.2)) +
     scale_x_discrete(breaks = c()) +
     fig1Theme()
 dev.off()
 # correlation of abundance v ME plot
+cor(abundPlot$me, abundPlot$abundance)
 pdf('abundance_correlation.pdf')
 ggplot(abundPlot, aes(x = me, y = abundance)) +
     geom_point(color = 'black', fill = '#e465a1', size = 3, shape = 21) +
     labs(x = 'Predicted abundance in pseudobulk samples\n(module eigengene)', 
         y = 'Actual abundance in pseudobulk samples (%)', 
         title = 'Malignant cell abundance') +
-    scale_y_continuous(breaks = c(0, 4,8), limits = c(0, 8)) +
-    scale_x_continuous(breaks = c(-.3, 0,.3), limits = c(-.3, .3)) +
+    scale_y_continuous(breaks = c(0, 3,6), limits = c(0, 6)) +
+    scale_x_continuous(breaks = c(-.25, 0,.25), limits = c(-.25, .25)) +
     fig1Theme()
 dev.off()
 # correlation between t-value and kME
 pdf('difex_correlation.pdf')
-ggplot(difExplot, aes(x = tval, y = kme)) +
+ggplot(difExplot[sample(seq(1,nrow(difExplot)), 6000),], aes(x = tval, y = kme)) +
     geom_point(color = 'black', fill= '#e465a1', size = 3, shape = 21) +
     labs(x = 'Single-nucleus DE (t-values)',
         y = 'Pseudobulk kME',
         title = 'Malignant cell expression') +
-    scale_x_continuous(breaks = c(-20, 0, 20), limits = c(-20, 20)) +
-    scale_y_continuous(breaks = c(-.5, 0, 0.5, 1), limits = c(-.5, 1)) +
+#    scale_x_continuous(breaks = c(-20, 0, 20), limits = c(-20, 20)) +
+#    scale_y_continuous(breaks = c(-.5, 0, 0.5, 1), limits = c(-.5, 1)) +
     fig1Theme()
 dev.off()
 ```
+
+```{.r}
+## Read in GSEA functions, e.g.:
+renv::install('bioc::GSEABase')
+renv::install('bioc::limma')
+renv::install('bioc::future.apply')
+library('flashClust')
+library('parallel')
+plan(multisession, workers = 20)
+source("/home/patrick/code/oldham-lab/GSEA/GSEAfxsV3.lint.R")
+#source("/home/patrick/code/oldham-lab/GSEA/GSEAfxsV3.R")
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/10k_genes/pseudobulk_snrna-seq_Modules'
+setwd(WD)
+print("Set working directory")
+## To run enrichment analysis for our gene sets in all networks:
+MyGSHGloop(kmecut1="topmodposbc",exclude="none",pvalcut1=NULL)
+setwd(WD)
+MyGSHGloop(kmecut1="topmodposfdr",exclude="none",pvalcut1=NULL)
+setwd(WD)
+```
+
 
 # Log 09/22
 
@@ -475,15 +527,41 @@ lapply(seq_along(meTab), function(i) apply(cor(abundAgg, meTab[[i]][,-1]), 1, ma
 ## identify module with highest enrichment
 
 ```{.r}
-WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/pseudobulk_snrna-seq_Modules/'
 library('data.table')
-rnaDataframe = data.frame(fread('/home/patrick/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/SyntheticDatasets/SyntheticDataset1_25pcntCells_50pcntVar_100samples_08-25-51.csv'))
-rnaDataframe$x = make.unique(rnaDataframe$x)
-setwd(paste0(WD, enrichPath[netSelec]))
-enrich = fread(list.files(path = '.', pattern = 'MY_SETS.*FDR.*csv', recursive = TRUE, full.names = TRUE))
+WD = '~/investigations/sc_glioma/darmanis/GBM_data_and_metadata/'
+expr = fread(paste0(WD, 'GBM_normalized_gene_counts.csv'))
+clusters = fread(paste0(WD, 'GBM_metadata.csv'))
+colnames(expr)[1] = 'Gene'
+clusters = clusters[match(colnames(expr)[-1], clusters$V1),]
+expr = data.frame(expr)
+clusters = data.frame(clusters)
+clusters$V1 = make.names(clusters$V1)
+setwd('~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/10k_genes')
+abund = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'legend', full.names = TRUE)))
+rnaDataframe = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'samples_[0-9]', full.names = TRUE)))
+abundAgg = aggregate(abund[,-c(1,2)], by = list(abund$Cell.type), sum)
+tName = abundAgg[,1]
+abundAgg = t(data.frame(abundAgg[,1], apply(abundAgg[,-1], 2, function(x) 100*x/sum(x)))[,-1])
+colnames(abundAgg) = tName
+meTab = lapply(list.files(path = '.', pattern = 'Module_eigengenes.*csv', recursive = TRUE, full.names = TRUE), fread)
+lapply(seq_along(meTab), function(i) apply(cor(abundAgg, meTab[[i]][,-1]), 1, max, na.rm = TRUE))
+cor(abundAgg, meTab[[12]][,-1])
+# winner
+# Bicor-None_signum0.278_minSize8_merge_ME_0.8_10000,navajowhite3
+```
+
+```{.r}
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/10k_genes/'
+setwd(WD)
+library('data.table')
+rnaDataframe = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'samples_[0-9]', full.names = TRUE)))
+enrich = lapply(list.files(path = 'pseudobulk_snrna-seq_Modules', pattern = 'FDR.*csv', recursive = TRUE, full.names = TRUE), fread)
+lapply(enrich, function(x) min(x[grep('kelley.*endothelial', x$SetName, ignore.case = TRUE), -seq(1,7)]))
+#coral1 in 
 modSelec = colnames(enrich)[which.min(enrich[which(enrich$SetID== 'MOSET7058'), seq(8, ncol(enrich)), with = FALSE])]
 kmeTab = fread(list.files(path = '.', pattern = 'kME_table.*csv', recursive = TRUE, full.names = TRUE))
 meTab = lapply(list.files(path = '.', pattern = 'Module_eigengenes.*csv', recursive = TRUE, full.names = TRUE), fread)
+setwd(paste0(WD, enrichPath[netSelec]))
 # colorscheme
 # main pink color is e465a1
 # use set1 from colorbrewer
@@ -1029,6 +1107,283 @@ dev.off()
 # ME plot
 pdf('ME_plot.pdf', height=2)
 ggplot(meSelec, aes(x = Sample , y = violet)) +
+    geom_bar(stat = 'identity',fill ='#e465a1', color = 'black') +
+    labs(x = 'Pseudobulk samples', y = 'AU', title = 'Module eigengene (PC1)') +
+    scale_y_continuous(breaks = c(-.2, 0,.2)) +
+    scale_x_discrete(breaks = c()) +
+    fig1Theme()
+dev.off()
+# correlation of abundance v ME plot
+pdf('abundance_correlation.pdf')
+ggplot(abundPlot, aes(x = me, y = abundance)) +
+    geom_point(color = 'black', fill = '#e465a1', size = 3, shape = 21) +
+    labs(x = 'Predicted abundance in pseudobulk samples\n(module eigengene)', 
+        y = 'Actual abundance in pseudobulk samples (%)', 
+        title = 'Malignant cell abundance') +
+#     scale_y_continuous(breaks = c(0, 4,8), limits = c(0, 8)) +
+#     scale_x_continuous(breaks = c(-.3, 0,.3), limits = c(-.3, .3)) +
+    fig1Theme()
+dev.off()
+# correlation between t-value and kME
+pdf('difex_correlation.pdf')
+ggplot(difExplot, aes(x = tval, y = kme)) +
+    geom_point(color = 'black', fill= '#e465a1', size = 3, shape = 21) +
+    labs(x = 'Single-nucleus DE (t-values)',
+        y = 'Pseudobulk kME',
+        title = 'Malignant cell expression') +
+#     scale_x_continuous(breaks = c(-20, 0, 20), limits = c(-20, 20)) +
+#     scale_y_continuous(breaks = c(-.5, 0, 0.5, 1), limits = c(-.5, 1)) +
+    fig1Theme()
+dev.off()
+```
+
+# Log 10/02
+
+Final attempt to create best possible figure 1 is to use Li et al. from DLPFC. It has more than 500 endothelial cells so is a good candidate for this analysis. Will try with counts and normalized counts.
+
+## Pseudobulk
+
+```{.r}
+WD = '/home/shared/scsn.expr_data/human_expr/postnatal/li_2018/'
+library('data.table')
+expr = fread(paste0(WD, 'matrix.mtx'), skip = 2 )
+colnames(expr) = c('gene', 'cell', 'count')
+exprW = dcast(expr, gene ~ cell, value.var = 'count')
+genes = fread(paste0(WD, 'genes.tsv'), header = FALSE)
+genes_hugo = fread(paste0(WD, 'genes_mapped.tsv'), header = FALSE)
+genes = genes_hugo$V2[match(genes$V2, genes_hugo$V1)]
+barcs = fread(paste0(WD, 'barcodes.tsv'), header = FALSE)
+barcs_anno = fread(paste0(WD, 'author_barcode_annotations.csv'), header = TRUE)
+colnames(exprW) = c('Gene', make.names(barcs_anno$Cell_Class, unique = TRUE))
+exprW$Gene = genes
+exprW[is.na(exprW)] = 0
+exprW = data.frame(exprW)
+barcs_anno = data.frame(cell_name = colnames(exprW)[-1], barcs_anno)
+# optional normalization
+exprW = data.frame(Gene = exprW[,1], apply(exprW[,-1], 2, function(x) x/sum(x))*1E6)
+# 
+source('~/code/oldham-lab/Pseudobulk-from-SC-SN-data/makeSyntheticDatasets_0.51.r')
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/li/normalized'
+setwd(WD) 
+makeSyntheticDatasets(
+    expr = exprW,
+    sampleindex = c(2:ncol(exprW)),
+    cell.info = barcs_anno,
+    cell.name = 1,
+    cell.type = 4,
+    cell.frac = NULL,
+    pcnt.cells = 10,
+    pcnt.var = 0,
+    no.samples = 100,
+    no.datasets = 1
+)
+```
+
+## FindModules
+
+```{.r}
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/li/normalized'
+setwd(WD)
+library('data.table')
+rnaDataframe = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'samples_[0-9]', full.names = TRUE)))
+colnames(rnaDataframe)[1] = 'Gene'
+rnaDataframe$Gene = make.unique(rnaDataframe$Gene)
+source('~/code/oldham-lab/FindModules/FindModules.lint.par.R')
+plan(multisession, workers = 20)
+# source('~/code/oldham-lab/FindModules/FindModules.lint.par.R')
+FindModules(
+    projectname = 'pseudobulk_snrna-seq',
+    expr = rnaDataframe,
+    geneinfo = c(1),
+    sampleindex = seq(2,ncol(rnaDataframe)),
+    samplegroups = as.factor(colnames(rnaDataframe)[-1]),
+    subset = NULL,
+    simMat = NULL,
+    saveSimMat = FALSE,
+    simType = 'Bicor',
+    overlapType = 'None',
+    TOtype = 'signed',
+    TOdenom= 'min', 
+    beta = 1,
+    MIestimator = 'mi.mm',
+    MIdisc = 'equalfreq',
+    signumType = 'rel',
+    iterate = TRUE,
+    signumvec = c(.999, .99,0.95, 0.90, 0.80),
+    minsizevec = c(5, 8, 10, 12, 15, 20),
+    signum = NULL,
+    minSize = NULL ,
+    merge.by = 'ME',
+    merge.param = 0.8,
+    export.merge.comp = T,
+    ZNCcut = 2,
+    calcSW = FALSE,
+    loadTree = FALSE,
+    writeKME = TRUE,
+    calcBigModStat = FALSE,
+    writeModSnap = TRUE
+)
+```
+
+## Check after FM
+
+```{.r}
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/li/'
+source('~/code/oldham-lab/Pseudobulk-from-SC-SN-data/makeSyntheticDatasets_0.51.r')
+library('data.table')
+setwd(WD) 
+
+abund = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'legend', full.names = TRUE)))
+rnaDataframe = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'samples_[0-9]', full.names = TRUE)))
+abundAgg = aggregate(abund[,-c(1,2)], by = list(abund$Cell.type), sum)
+tName = abundAgg[,1]
+abundAgg = t(data.frame(abundAgg[,1], apply(abundAgg[,-1], 2, function(x) 100*x/sum(x)))[,-1])
+colnames(abundAgg) = tName
+meTab = lapply(list.files(path = '.', pattern = 'Module_eigengenes.*csv', recursive = TRUE, full.names = TRUE), fread)
+x=lapply(seq_along(meTab), function(i) apply(cor(abundAgg, meTab[[i]][,-1]), 1, max, na.rm = TRUE))
+lapply(x, function(y) y[7])
+cor(meTab[[21]], abundAgg[,2])
+# winner - no norm
+# Bicor-None_signum0.293_minSize5_merge_ME_0.8_23476, brown
+```
+
+
+```{.r}
+## Read in GSEA functions, e.g.:
+library('flashClust')
+library('parallel')
+source("/home/patrick/code/oldham-lab/GSEA/enrichment_functions.R")
+mods = unlist(unique(kmeTab[,6])[-1])
+kmeTab[,6][is.na(kmeTab[,6])]="sdf"
+out = enrichment_man(lapply(mods, function(x) kmeTab$Gene[kmeTab[,6]==x]), kmeTab$Gene, '/home/shared/genesets/genesets_slim')
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/li/'
+network = 'pseudobulk_snrna-seq_Modules/'
+setwd(paste0(WD, network))
+MyGSHGloop(kmecut1="topmodposfdr",exclude="none",pvalcut1=NULL)
+```
+
+## Plot generation
+
+steps:
+
+- [x] identify module with highest enrichment
+- [x] read in kme and ME
+- [x] get color scheme
+- [x] create correlation plot and ME plot, over each other
+- [x] create ME va actual abundance plot
+- [x] create t-value v kME plot
+- [ ] align all plots into single figure
+
+## Creating all plots
+
+```{.r}
+# colorscheme
+# main pink color is e465a1
+# use set1 from colorbrewer
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/li/'
+network = 'pseudobulk_snrna-seq_Modules/Bicor-None_signum0.293_minSize5_merge_ME_0.8_23476/'
+modSelec = 'brown'
+library('data.table')
+library('ggplot2')
+library('RColorBrewer')
+# load pseudobulk expression matrix
+setwd(WD)
+rnaDataframe = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'samples_[0-9]', full.names = TRUE)))
+colnames(rnaDataframe)[1] = 'Gene'
+rnaDataframe$Gene = make.unique(rnaDataframe$Gene)
+setwd(paste0(WD, network))
+kmeTab = fread(list.files(path = '.', pattern = 'kME_table.*csv', recursive = TRUE, full.names = TRUE))
+meTab = fread(list.files(path = '.', pattern = 'Module_eigengenes.*csv', recursive = TRUE, full.names = TRUE))
+corRankGenes = kmeTab$Gene[order(kmeTab[,which(colnames(kmeTab) == paste0('kME', modSelec)), with = FALSE], decreasing = TRUE)]
+corExpr = rnaDataframe[match(corRankGenes, rnaDataframe$Gene),]
+corSelec = corExpr[seq(1,15),]
+corSelec = data.frame( Gene = corSelec[,1], log2(corSelec[,-1]))
+meSelec = data.frame(Sample = meTab$Sample, meTab[, which(colnames(meTab) == modSelec), with = F])
+corPlot = reshape2::melt(corSelec, id.var = 'Gene')
+colnames(corPlot) = c('Gene', 'Sample', 'Expr')
+meanExpr = aggregate(corPlot$Expr, by = list(corPlot$Gene), mean)
+meanExpr = meanExpr[order(meanExpr$x, decreasing = TRUE),]
+corPlot$Gene = factor(corPlot$Gene, levels = meanExpr$Group.1)
+corPlot$Sample = factor(corPlot$Sample, levels = unique(corPlot$Sample))
+# cor between ME and actual abundance
+setwd(WD)
+abund = data.frame(fread(list.files(path = 'SyntheticDatasets', pattern = 'legend', full.names = TRUE)))
+
+
+WD = '/home/shared/scsn.expr_data/human_expr/postnatal/li_2018/'
+library('data.table')
+expr = fread(paste0(WD, 'matrix.mtx'), skip = 2 )
+colnames(expr) = c('gene', 'cell', 'count')
+exprW = dcast(expr, gene ~ cell, value.var = 'count')
+genes = fread(paste0(WD, 'genes.tsv'), header = FALSE)
+genes_hugo = fread(paste0(WD, 'genes_mapped.tsv'), header = FALSE)
+genes = genes_hugo$V2[match(genes$V2, genes_hugo$V1)]
+barcs = fread(paste0(WD, 'barcodes.tsv'), header = FALSE)
+barcs_anno = fread(paste0(WD, 'author_barcode_annotations.csv'), header = TRUE)
+colnames(exprW) = c('Gene', make.names(barcs_anno$Cell_Class, unique = TRUE))
+exprW$Gene = genes
+exprW[is.na(exprW)] = 0
+exprW = data.frame(exprW)
+barcs_anno = data.frame(cell_name = colnames(exprW)[-1], barcs_anno)
+expr = exprW
+
+abundAgg = aggregate(abund[,-c(1,2)], by = list(abund$Cell.type), sum)
+tName = abundAgg[,1]
+abundAgg = t(data.frame(abundAgg[,1], apply(abundAgg[,-1], 2, function(x) 100*x/sum(x)))[,-1])
+colnames(abundAgg) = tName
+abundPlot = data.frame(section = meSelec[,1], abundance = abundAgg[,2], me = meSelec[,2])
+# abundPlot = reshape2::melt(abundPlot[order(apply(abundPlot[-1], 1, sum), decreasing = FALSE), ])
+# abundPlot$section = factor(abundPlot$section, levels = unique(abundPlot$section))
+# load differential expression values
+library('future')
+library('future.apply')
+options(future.globals.maxSize= +Inf)
+TtestOut = future_apply(expr[,-1] , 1, function(exprX)                                                               
+    t.test(as.numeric(exprX[which(barcs_anno$Cell_Class == 'Endo')+1]),                                     
+    as.numeric(exprX[-c(1,(which(barcs_anno$Cell_Class == 'Endo')+1))])))
+tvalOut = lapply(TtestOut, function(x) x$statistic)  
+deTval = data.frame(genes = expr$Gene, tvalue = unlist(tvalOut))
+difExplot = data.frame(gene = kmeTab$Gene, kme = (kmeTab$kMEbrown), tval = (deTval$tvalue[match(kmeTab$Gene, deTval$genes)]))
+# all plots made below
+WD = '~/code/pschupp/Singleton-analyses/mike-grant-endothelial-pseudobulk-analysis/li/'
+setwd(WD)
+# create theme
+fig1Theme = function(){
+    theme_bw() +
+    theme(
+#       axis.line = element_line(colour = "black"),
+# 		legend.title = element_text(size=30, family='NimbusSan'),
+ 		axis.text.x = element_text(size=15, color='black',  family='NimbusSan'), # , margin=margin(t=10)),
+ 		axis.text.y = element_text(size=15, color='black', family='NimbusSan'), # , margin=margin(r=10)),
+        axis.title.y = element_text(size=20, face='bold', family='NimbusSan'), #, margin=margin(t=0, r=10, b=0, l=0)),
+        axis.title.x = element_text(size=20, face='bold', family='NimbusSan'), #, margin=margin(t=0, r=0, b=0, l=0)),
+        plot.title = element_text(size=30,face="bold", hjust=.5, family='NimbusSan'), # margin=margin(t=-20, b=10)),
+# 		plot.subtitle = element_text(size=40,face="bold", hjust=.5 , family='NimbusSan', margin=margin(t=10, b=10)),
+# 		axis.line.x = element_line(size=3),
+# 		axis.line.y = element_line(size=3),
+# 		plot.margin = unit(c(4, 2, 1, 2), "lines"),
+# 		legend.key.size=unit(1.3, 'cm'),
+# 		legend.text=element_text(size=30, family='NimbusSan')
+        panel.border = element_rect(fill = NA, colour = "black", linewidth = 2),
+        plot.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = 'bottom')
+}
+# correlation plot
+pdf('correlation_genes_plot.pdf')
+ggplot(corPlot, aes(x = Sample, y = Expr, group = Gene)) +
+    geom_line(aes(color = Gene)) +
+    scale_color_discrete(colorRampPalette( brewer.pal(9,"Set1") )(15)) + # revisit TODO
+    scale_x_discrete(breaks = c()) +
+    scale_y_continuous(breaks = c()) +
+    labs(x = '', y = 'Expression level', title = 'Pseudobulk gene\ncoexpression module') +
+    guides(color=guide_legend(title="", nrow = 3, byrow = TRUE)) +
+    fig1Theme()
+dev.off()
+# ME plot
+pdf('ME_plot.pdf', height=2)
+ggplot(meSelec, aes(x = Sample , y = brown)) +
     geom_bar(stat = 'identity',fill ='#e465a1', color = 'black') +
     labs(x = 'Pseudobulk samples', y = 'AU', title = 'Module eigengene (PC1)') +
     scale_y_continuous(breaks = c(-.2, 0,.2)) +
