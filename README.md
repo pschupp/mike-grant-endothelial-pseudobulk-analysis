@@ -1549,7 +1549,7 @@ meL = lapply(list.files(path = WD, pattern = 'Module_eigengenes.*csv', full.name
 out = lapply(meL, function(me) apply(me[,-1], 2, function(x) cor(abundAgg$Endo, x)))
 
 source("/home/patrick/code/oldham-lab/GSEA/enrichment_functions.R")
-moset7054  = read.csv('/home/shared/genesets/genesets_slim/MOSET7054.csv')
+moset7058  = unlist(read.csv('/home/shared/genesets/genesets_slim/MOSET7058.csv', header =F ))
 
 kmeL = lapply(list.files(path = WD, pattern = 'kME_table.*csv', full.names = TRUE, recursive = TRUE), fread)
 outEnrich = lapply(kmeL, function(kme) {
@@ -1563,30 +1563,48 @@ outEnrich = lapply(kmeL, function(kme) {
 outDf = lapply(seq_along(outEnrich), function(i) {
     enrichT = unlist(outEnrich[[i]])
     corT = out[[i]][match(names(enrichT), names(out[[i]]))]
-    data.frame(enrichT, corT)
+    data.frame(module = names(enrichT), enrichment = enrichT, correlation = corT)
 })
-
-
-networks = rep(gsub('.*None_', '', gsub('_merge.*', '', list.files(path = WD, pattern = 'Module_eigengenes.*csv', recursive = TRUE))), unlist(lapply(out, length)))
 outDf = data.frame(
+network = rep(gsub('.*None_', '', gsub('_merge.*', '', list.files(path = WD, pattern = 'Module_eigengenes.*csv', recursive = TRUE))), unlist(lapply(outDf, nrow))),
     do.call(rbind,outDf))
+rownames(outDf) = seq(1, nrow(outDf))
+write.csv(outDf, file = 'correlation_v_enrichment_endothelial.csv', row.names = FALSE, quote = FALSE)
 
-
-names(outDf) = rep(gsub('.*None_', '', gsub('_merge.*', '', list.files(path = WD, pattern = 'Module_eigengenes.*csv', recursive = TRUE))))
-
-
-
-
-
-outDf = data.frame(
-    network = rep(gsub('.*None_', '', gsub('_merge.*', '', list.files(path = WD, pattern = 'Module_eigengenes.*csv', recursive = TRUE))), unlist(lapply(out, length))),
-    module = names(unlist(out)),
-    correlation = unlist(out),
-    enrichmentPval = unlist(outEnrich)
-)
-
-nameA = names(unlist(out))
-nameB = names(unlist(outEnrich))
-
+fig1Theme = function(){
+    theme_bw() +
+    theme(
+#       axis.line = element_line(colour = "black"),
+# 		legend.title = element_text(size=30, family='NimbusSan'),
+ 		axis.text.x = element_text(size=15, color='black',  family='NimbusSan'), # , margin=margin(t=10)),
+ 		axis.text.y = element_text(size=15, color='black', family='NimbusSan'), # , margin=margin(r=10)),
+        axis.title.y = element_text(size=20, face='bold', family='NimbusSan'), #, margin=margin(t=0, r=10, b=0, l=0)),
+        axis.title.x = element_text(size=20, face='bold', family='NimbusSan'), #, margin=margin(t=0, r=0, b=0, l=0)),
+        plot.title = element_text(size=30,face="bold", hjust=.5, family='NimbusSan'), # margin=margin(t=-20, b=10)),
+# 		plot.subtitle = element_text(size=40,face="bold", hjust=.5 , family='NimbusSan', margin=margin(t=10, b=10)),
+# 		axis.line.x = element_line(size=3),
+# 		axis.line.y = element_line(size=3),
+# 		plot.margin = unit(c(4, 2, 1, 2), "lines"),
+# 		legend.key.size=unit(1.3, 'cm'),
+# 		legend.text=element_text(size=30, family='NimbusSan')
+        panel.border = element_rect(fill = NA, colour = "black", linewidth = 2),
+        plot.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = 'bottom')
+}
+outDf$enrichment = -log10(outDf$enrichment)
+pdf('correlation_v_enrichment_endothelial.pdf')
+ggplot(outDf, aes(x = enrichment, y = correlation)) +
+    geom_point(color = 'black', size = 3, shape = 21) +
+    geom_smooth(method=lm, se=FALSE) + 
+    labs(x = '-log10(Enrichment p-value)',
+        y = "Pearson's correlation ME and abundance", 
+        title = 'Correlation v. Enrichment for Kelley Endothelial Cells (150 genes)',
+        subtitle = 'r = 0.58') +
+#    scale_y_continuous(breaks = c(1, 4), limits = c(1, 4)) +
+#    scale_x_continuous(breaks = c(-.25, 0,.25), limits = c(-.25, .25)) +
+    fig1Theme()
+dev.off()
 ```
 
