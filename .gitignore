@@ -53,3 +53,4 @@ renv/
 *.csv
 SyntheticDatasets/
 pseudobulk_snrna-seq_Modules/
+networks/
